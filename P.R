@@ -9,7 +9,7 @@ library(depmixS4)
 
 ### Import data ###
 getwd()
-setwd("C:/Documents/School/6 Spring 2023/CMPT 318/Final Project")
+setwd("C:/Users/ricks/Desktop/CMPT 318/FinalProject/Data")
 df <- read.table("Term_Project_Dataset.txt", header = TRUE, sep = ",")
 df <- na.omit(df)
 
@@ -63,3 +63,65 @@ ggbiplot(pcs)
 
 
 
+################    HMM Training and Testing   ############
+
+scaled_data <- cbind(df["Date"], df["Time"], scale(df[, c(3:9)]))
+scaled_data <- subset(scaled_data, wday(as.Date(scaled_data$Date, format = "%d/%m/%y")) == 5)
+scaled_data$Date <- as.Date(scaled_data$Date, format = "%d/%m/%y")
+startTime <- strptime("06:20:00", format="%H:%M:%S")
+endTime <- strptime("10:20:00", format="%H:%M:%S")
+scaled_data <- subset(scaled_data, difftime(strptime(scaled_data$Time, format="%H:%M:%S"), startTime) >= 0 & 
+                        difftime(strptime(scaled_data$Time, format="%H:%M:%S"), endTime) < 0)
+data <- scaled_data[,c("Date", "Time", "Global_active_power", "Voltage", "Sub_metering_3")]
+
+# Split into train and test data
+# have 53 days, training will have 37 days and testing will have 16 days
+train_dates <- unique(data$Date)[1:37]
+test_dates <- unique(data$Date)[38:53]
+train_data <- subset(data, Date %in% train_dates)
+test_data <- subset(data, Date %in% test_dates)
+
+
+sum(train_data$Date == "2020-08-06")
+length(unique(data$Date))
+unique(train_data$Date)
+
+
+# Training the HMM
+set.seed(1)
+for (i in 4:24) {
+  print(paste("nstates ", i, " run ", i-2))
+  
+  mod <- depmix(response =list(train_data$Global_active_power ~ 1, train_data$Voltage ~ 1, train_data$Sub_metering_3 ~ 1), 
+                data = train_data, nstates = i, 
+                ntimes = rep(c(720), each=37)
+                )
+  
+  fm <- fit(mod)
+  
+  res_list[i-2, 1] = logLik(fm)
+  res_list[i-2, 2] = AIC(fm)
+  res_list[i-2, 3] = BIC(fm)
+  print(paste("logLik ", logLik(fm), " AIC ", AIC(fm), " BIC ", BIC(fm)))
+}
+
+
+print(res_list)
+
+d <- data.frame(res_list)
+names(d) = c("logLik", "AIC", "BIC")
+d$nstates = seq(from = 4, to = 24)
+print(d)
+
+plot(unlist(d[1]), unlist(d[3]), xlab = "logLik", ylab = "BIC")
+plot(unlist(d[4]), unlist(d[1]), xlab = "nstates", ylab = "logLik")
+plot(unlist(d[4]), unlist(d[3]), xlab = "nstates", ylab = "BIC")
+
+
+# Testing the HMM
+
+
+
+
+
+################    Anomaly Detection   ############
