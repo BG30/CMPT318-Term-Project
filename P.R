@@ -103,7 +103,7 @@ for (i in 4:24) {
   print(paste("nstates ", i, " run ", i-2))
   
   modFit <- depmix(response=list(train_data$Global_active_power ~ 1, train_data$Voltage ~ 1, train_data$Sub_metering_3 ~ 1), 
-                data = train_data, nstates = 3, 
+                data = train_data, nstates = i, 
                 ntimes = rep(c(720), each=24),
                 family=list(gaussian(), gaussian(), gaussian())
          )
@@ -111,7 +111,7 @@ for (i in 4:24) {
   
   
   modTest <- depmix(response=list(train_data$Global_active_power ~ 1, train_data$Voltage ~ 1, train_data$Sub_metering_3 ~ 1), 
-                    data = test_data, nstates = 3, 
+                    data = test_data, nstates = i, 
                     ntimes = rep(c(720), each=24),
                     family=list(gaussian(), gaussian(), gaussian())
              )
@@ -140,17 +140,18 @@ plot(unlist(d[1]), unlist(d[3]), xlab = "logLik", ylab = "BIC")
 plot(unlist(d[5]), unlist(d[1]), xlab = "nstates", ylab = "logLik")
 plot(unlist(d[5]), unlist(d[3]), xlab = "nstates", ylab = "BIC")
 plot(unlist(d[5]), unlist(d[2]), xlab = "nstates", ylab = "AIC")
-plot(unlist(d[5]), unlist(d[4]), xlab = "nstates", ylab = "Test=LogLik")
+plot(unlist(d[5]), unlist(d[4]), xlab = "nstates", ylab = "Test-LogLik")
 
 
 
 
 ################    Anomaly Detection   ############
 # rebuild the model based on the best training model
-mod <- depmix(response=list(train_data$Global_active_power ~ 1, train_data$Voltage ~ 1, train_data$Sub_metering_3 ~ 1), 
-              data = train_data, nstates = i, 
-              ntimes = rep(c(720), each=40),
-              family=list(gaussian(), gaussian(), gaussian())
+# will train it on both test and training data
+modFit <- depmix(response=list(train_data$Global_active_power ~ 1, train_data$Voltage ~ 1, train_data$Sub_metering_3 ~ 1), 
+                 data = train_data, nstates = 3, 
+                 ntimes = rep(c(720), each=24),
+                 family=list(gaussian(), gaussian(), gaussian())
 )
 
 fm <- fit(mod)
