@@ -5,7 +5,9 @@ require(ggbiplot)
 library(dplyr)
 library(lubridate)
 library(ggplot2)
-library(depmixS4) 
+library(depmixS4)
+library(data.table)
+library(hash)
 
 ### Import data ###
 getwd()
@@ -82,14 +84,18 @@ data <- subset(data, !(Date == "2020-12-10"))
 
 
 # Split into train and test data
-train_dates <- unique(data$Date)[1:40]
-test_dates <- unique(data$Date)[41:48]
+train_dates <- unique(data$Date)[1:24]
+test_dates <- unique(data$Date)[25:48]
 train_data <- subset(data, Date %in% train_dates)
 test_data <- subset(data, Date %in% test_dates)
+train_data <- train_data[,c("Global_active_power", "Voltage", "Sub_metering_3")]
+test_data <- test_data[,c("Global_active_power", "Voltage", "Sub_metering_3")]
+test_data <- test_data[is.finite(rowSums(test_data)),]
+train_data <- train_data[is.finite(rowSums(train_data)),]
 
 
 # Training and testing the HMMs
-set.seed(1)
+set.seed(3)
 res_list <- array(c(0), dim = c(22,4))
 
 
@@ -97,26 +103,28 @@ for (i in 4:24) {
   print(paste("nstates ", i, " run ", i-2))
   
   modFit <- depmix(response=list(train_data$Global_active_power ~ 1, train_data$Voltage ~ 1, train_data$Sub_metering_3 ~ 1), 
-                data = train_data, nstates = i, 
-                ntimes = rep(c(720), each=40),
+                data = train_data, nstates = 3, 
+                ntimes = rep(c(720), each=24),
                 family=list(gaussian(), gaussian(), gaussian())
          )
-  fm <- fit(modFit)
+  fm <- fit(modFit, em=em.control((maxit = 900000)))
   
   
   modTest <- depmix(response=list(train_data$Global_active_power ~ 1, train_data$Voltage ~ 1, train_data$Sub_metering_3 ~ 1), 
-                    data = test_data, nstates = i, 
-                    ntimes = rep(c(720), each=8),
+                    data = test_data, nstates = 3, 
+                    ntimes = rep(c(720), each=24),
                     family=list(gaussian(), gaussian(), gaussian())
-  )
-  modTest <- setpars(modTest , getpars(rep(c(720), each=8)))
-  
+             )
+  modTest <- setpars(modTest , getpars(modTest))
+  fb <- forwardbackward(modTest)
+  fb$logLike
+  logLik(modTest)
   
   res_list[i-2, 1] = logLik(fm)
   res_list[i-2, 2] = AIC(fm)
   res_list[i-2, 3] = BIC(fm)
   res_list[i-2, 4] = logLik(modTest)
-  print(paste("logLik ", logLik(fm), " AIC ", AIC(fm), " BIC ", BIC(fm), " Test logLik ", logLik(modTest)))
+  print(paste("logLik ", logLik(fm), " AIC ", AIC(fm), " BIC ", BIC(fm), " Test logLik ", fb$logLike))
 }
 
 
@@ -125,36 +133,14 @@ print(res_list)
 d <- data.frame(res_list)
 names(d) = c("logLik", "AIC", "BIC", "Test LogLik")
 d$nstates = c(0,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24)
+d <- d[-1,]
 print(d)
 
 plot(unlist(d[1]), unlist(d[3]), xlab = "logLik", ylab = "BIC")
-plot(unlist(d[4]), unlist(d[1]), xlab = "nstates", ylab = "logLik")
-plot(unlist(d[4]), unlist(d[3]), xlab = "nstates", ylab = "BIC")
-
-
-# Run test on the model which is the best performing
-test_data
-
-
-
-
-
-
-
-modTest <- depmix(response=list(train_data$Global_active_power ~ 1, train_data$Voltage ~ 1, train_data$Sub_metering_3 ~ 1), 
-                  data = test_data, nstates = 2, 
-                  ntimes = rep(c(720), each=8),
-                  family=list(gaussian(), gaussian(), gaussian())
-)
-modTest <- setpars(modTest , getpars(rep(c(720), each=8)))
-
-
-
-
-
-
-
-
+plot(unlist(d[5]), unlist(d[1]), xlab = "nstates", ylab = "logLik")
+plot(unlist(d[5]), unlist(d[3]), xlab = "nstates", ylab = "BIC")
+plot(unlist(d[5]), unlist(d[2]), xlab = "nstates", ylab = "AIC")
+plot(unlist(d[5]), unlist(d[4]), xlab = "nstates", ylab = "Test=LogLik")
 
 
 
