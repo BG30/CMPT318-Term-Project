@@ -165,22 +165,51 @@ dataset3 <- read.table("Dataset_with_Anomalies_3.txt", header = TRUE, sep = ",")
 
 
 ## Dataset 1
+count_vector <- dataset1 %>% 
+  group_by(Date) %>% 
+  summarize(count = n()) %>%
+  pull(count)
+
+
 modTest <- depmix(response=list(dataset1$Global_active_power ~ 1, dataset1$Voltage ~ 1, dataset1$Sub_metering_3 ~ 1), 
-                  data = dataset1, nstates = i, 
-                  ntimes = rep(c(720), each=24),
+                  data = dataset1, nstates = 1, 
+                  ntimes = count_vector,
                   family=list(gaussian(), gaussian(), gaussian())
 )
 modTest <- setpars(modTest, getpars(fm))
-fb <- forwardbackward(modTest)
-fb$logLike
 logLik(modTest)
 
 
 
 ## DataSet 2
+count_vector <- dataset2 %>% 
+  group_by(Date) %>% 
+  summarize(count = n()) %>%
+  pull(count)
+
+
+modTest <- depmix(response=list(dataset2$Global_active_power ~ 1, dataset2$Voltage ~ 1, dataset2$Sub_metering_3 ~ 1), 
+                  data = dataset2, nstates = i, 
+                  ntimes = count_vector,
+                  family=list(gaussian(), gaussian(), gaussian())
+)
+modTest <- setpars(modTest, getpars(fm))
+logLik(modTest)
 
 
 ## DataSet 3
+count_vector <- dataset3 %>% 
+  group_by(Date) %>% 
+  summarize(count = n()) %>%
+  pull(count)
 
+
+modTest <- depmix(response=list(dataset3$Global_active_power ~ 1, dataset3$Voltage ~ 1, dataset3$Sub_metering_3 ~ 1), 
+                  data = dataset3, nstates = i, 
+                  ntimes = count_vector,
+                  family=list(gaussian(), gaussian(), gaussian())
+)
+modTest <- setpars(modTest, getpars(fm))
+logLik(modTest)
 
 
