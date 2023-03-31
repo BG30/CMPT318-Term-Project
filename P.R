@@ -64,9 +64,7 @@ print(pcs)
 ggbiplot(pcs)
 
 
-
 ################    HMM Training and Testing   ############
-
 scaled_data <- cbind(df["Date"], df["Time"], scale(df[, c(3:9)]))
 scaled_data <- subset(scaled_data, wday(as.Date(scaled_data$Date, format = "%d/%m/%y")) == 5)
 scaled_data$Date <- as.Date(scaled_data$Date, format = "%d/%m/%y")
@@ -95,27 +93,30 @@ train_data <- train_data[is.finite(rowSums(train_data)),]
 
 
 # Training and testing the HMMs
-set.seed(3)
-res_list <- array(c(0), dim = c(22,4))
+set.seed(4)
+res_list <- array(c(0), dim = c(21,4))
 
 
-for (i in 4:24) {
-  print(paste("nstates ", i, " run ", i-2))
+for (i in 4:23) {
+  print(paste("nstates ", i, " run ", i-3))
   
   modFit <- depmix(response=list(train_data$Global_active_power ~ 1, train_data$Voltage ~ 1, train_data$Sub_metering_3 ~ 1), 
                 data = train_data, nstates = i, 
                 ntimes = rep(c(720), each=24),
                 family=list(gaussian(), gaussian(), gaussian())
          )
-  fm <- fit(modFit, em=em.control((maxit = 900000)))
+  
+  # ln:110 and ln:111 do the same thing they just vary on when they want to work (uncomment only 1)
+  #fm <- fit(modFit, em=em.control((maxit = 90000000)))
+  fm <- fit(modFit)
   
   
-  modTest <- depmix(response=list(train_data$Global_active_power ~ 1, train_data$Voltage ~ 1, train_data$Sub_metering_3 ~ 1), 
+  modTest <- depmix(response=list(test_data$Global_active_power ~ 1, test_data$Voltage ~ 1, test_data$Sub_metering_3 ~ 1), 
                     data = test_data, nstates = i, 
                     ntimes = rep(c(720), each=24),
                     family=list(gaussian(), gaussian(), gaussian())
              )
-  modTest <- setpars(modTest , getpars(modTest))
+  modTest <- setpars(modTest, getpars(fm))
   fb <- forwardbackward(modTest)
   fb$logLike
   logLik(modTest)
@@ -132,7 +133,7 @@ print(res_list)
 
 d <- data.frame(res_list)
 names(d) = c("logLik", "AIC", "BIC", "Test LogLik")
-d$nstates = c(0,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24)
+d$nstates = c(0,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23)
 d <- d[-1,]
 print(d)
 
@@ -148,15 +149,38 @@ plot(unlist(d[5]), unlist(d[4]), xlab = "nstates", ylab = "Test-LogLik")
 ################    Anomaly Detection   ############
 # rebuild the model based on the best training model
 # will train it on both test and training data
-modFit <- depmix(response=list(train_data$Global_active_power ~ 1, train_data$Voltage ~ 1, train_data$Sub_metering_3 ~ 1), 
-                 data = train_data, nstates = 3, 
-                 ntimes = rep(c(720), each=24),
+data <- data[,c("Global_active_power", "Voltage", "Sub_metering_3")]
+
+finalModel <- depmix(response=list(data$Global_active_power ~ 1, data$Voltage ~ 1, data$Sub_metering_3 ~ 1), 
+                 data = data, nstates = 7, 
+                 ntimes = rep(c(720), each=48),
                  family=list(gaussian(), gaussian(), gaussian())
 )
-
-fm <- fit(mod)
+fm <- fit(finalModel)
 
 setwd("C:/Users/ricks/Desktop/CMPT 318/FinalProject/Data/Data_with_Anomalies")
 dataset1 <- read.table("Dataset_with_Anomalies_1.txt", header = TRUE, sep = ",")
 dataset2 <- read.table("Dataset_with_Anomalies_2.txt", header = TRUE, sep = ",")
 dataset3 <- read.table("Dataset_with_Anomalies_3.txt", header = TRUE, sep = ",")
+
+
+## Dataset 1
+modTest <- depmix(response=list(dataset1$Global_active_power ~ 1, dataset1$Voltage ~ 1, dataset1$Sub_metering_3 ~ 1), 
+                  data = dataset1, nstates = i, 
+                  ntimes = rep(c(720), each=24),
+                  family=list(gaussian(), gaussian(), gaussian())
+)
+modTest <- setpars(modTest, getpars(fm))
+fb <- forwardbackward(modTest)
+fb$logLike
+logLik(modTest)
+
+
+
+## DataSet 2
+
+
+## DataSet 3
+
+
+
