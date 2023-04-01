@@ -1,30 +1,46 @@
-install.packages("devtools")
-library(devtools)
-install_github("vqv/ggbiplot")
+#library(devtools)
+#install_github("vqv/ggbiplot")
 require(ggbiplot)
 library(dplyr)
 library(lubridate)
 library(ggplot2)
+library(depmixS4) 
 library(depmixS4)
 library(data.table)
 library(hash)
 
+### Format time ###
+format_time <- function(data) {
+  startTime <- strptime("06:20:00", format="%H:%M:%S")
+  endTime <- strptime("10:20:00", format="%H:%M:%S")
+  data <- subset(data, wday(as.Date(data$Date, format = "%d/%m/%y")) == 5)
+  data$Date <- as.Date(data$Date, format = "%d/%m/%y")
+  startTime <- strptime("06:20:00", format="%H:%M:%S")
+  endTime <- strptime("10:20:00", format="%H:%M:%S")
+  data <- subset(data, difftime(strptime(data$Time, format="%H:%M:%S"), startTime) >= 0 & 
+                          difftime(strptime(data$Time, format="%H:%M:%S"), endTime) < 0)
+  
+  # removing some data for dates that do not meet the threshold of having 720 entries per date
+  data <- subset(data, !(Date == "2020-08-06"))
+  data <- subset(data, !(Date == "2020-08-13"))
+  data <- subset(data, !(Date == "2020-04-30"))
+  data <- subset(data, !(Date == "2020-12-03"))
+  data <- subset(data, !(Date == "2020-12-10"))
+  
+  return(data)
+}
+
 ### Import data ###
-getwd()
-setwd("C:/Users/ricks/Desktop/CMPT 318/FinalProject/Data")
+setwd("C:/Documents/School/6 Spring 2023/CMPT 318/Final Project")
 df <- read.table("Term_Project_Dataset.txt", header = TRUE, sep = ",")
-df <- na.omit(df)
+### df <- na.omit(df)
 
 ### Scale data ###
 scaled_data <- cbind(df["Date"], df["Time"], scale(df[, c(3:9)]))
 
+pcs <- prcomp(scaled_data[, c(3:9)])
 ### Filter weekday and timeframe ###
-scaled_data <- subset(scaled_data, wday(as.Date(scaled_data$Date, format = "%d/%m/%y")) == 5)
-scaled_data$Date <- as.Date(scaled_data$Date, format = "%d/%m/%y")
-startTime <- strptime("06:20:00", format="%H:%M:%S")
-endTime <- strptime("10:20:00", format="%H:%M:%S")
-scaled_data <- subset(scaled_data, difftime(strptime(scaled_data$Time, format="%H:%M:%S"), startTime) >= 0 & 
-                        difftime(strptime(scaled_data$Time, format="%H:%M:%S"), endTime) < 0)
+scaled_data <- format_time(scaled_data)
 
 ### Create sample matrix ###
 scaled_data$week_num <- strtoi(strftime(scaled_data$Date, format = "%V"))
@@ -41,12 +57,12 @@ weekly_samples_Sub_metering_3 <- summarise(scaled_data, Sub_metering_3 = mean(Su
 
 # Create a vector of data frames
 weekly_samples <- list(weekly_samples_Global_active_power, 
-                weekly_samples_Global_reactive_power, 
-                weekly_samples_Global_Voltage,
-                weekly_samples_Global_intensity,
-                weekly_samples_Sub_metering_1,
-                weekly_samples_Sub_metering_2,
-                weekly_samples_Sub_metering_3)
+                       weekly_samples_Global_reactive_power, 
+                       weekly_samples_Global_Voltage,
+                       weekly_samples_Global_intensity,
+                       weekly_samples_Sub_metering_1,
+                       weekly_samples_Sub_metering_2,
+                       weekly_samples_Sub_metering_3)
 
 # Samples of the average output per feature by week
 weekly_samples <- Reduce(function(x, y) merge(x, y, by = "week_num", all.x = TRUE), weekly_samples)
@@ -66,19 +82,7 @@ ggbiplot(pcs)
 
 ################    HMM Training and Testing   ############
 scaled_data <- cbind(df["Date"], df["Time"], scale(df[, c(3:9)]))
-scaled_data <- subset(scaled_data, wday(as.Date(scaled_data$Date, format = "%d/%m/%y")) == 5)
-scaled_data$Date <- as.Date(scaled_data$Date, format = "%d/%m/%y")
-startTime <- strptime("06:20:00", format="%H:%M:%S")
-endTime <- strptime("10:20:00", format="%H:%M:%S")
-scaled_data <- subset(scaled_data, difftime(strptime(scaled_data$Time, format="%H:%M:%S"), startTime) >= 0 & 
-                        difftime(strptime(scaled_data$Time, format="%H:%M:%S"), endTime) < 0)
-data <- scaled_data[,c("Date", "Time", "Global_active_power", "Voltage", "Sub_metering_3")]
-# removing some data for dates that do not meet the threshold of having 720 entries per date
-data <- subset(data, !(Date == "2020-08-06"))
-data <- subset(data, !(Date == "2020-08-13"))
-data <- subset(data, !(Date == "2020-04-30"))
-data <- subset(data, !(Date == "2020-12-03"))
-data <- subset(data, !(Date == "2020-12-10"))
+data <- format_time(scaled_data)
 
 
 # Split into train and test data
@@ -112,19 +116,19 @@ for (i in 4:23) {
   print(paste("nstates ", i, " run ", i-3))
   
   modFit <- depmix(response=list(train_data$Global_active_power ~ 1, train_data$Voltage ~ 1, train_data$Sub_metering_3 ~ 1), 
-                data = train_data, nstates = i, 
-                ntimes = count_vector_train,
-                family=list(gaussian(), gaussian(), gaussian())
-         )
+                   data = train_data, nstates = i, 
+                   ntimes = count_vector_train,
+                   family=list(gaussian(), gaussian(), gaussian())
+  )
   
   fm <- fit(modFit)
-
+  
   
   modTest <- depmix(response=list(test_data$Global_active_power ~ 1, test_data$Voltage ~ 1, test_data$Sub_metering_3 ~ 1), 
                     data = test_data, nstates = i, 
                     ntimes = count_vector_test,
                     family=list(gaussian(), gaussian(), gaussian())
-             )
+  )
   modTest <- setpars(modTest, getpars(fm))
   fb <- forwardbackward(modTest)
   fb$logLike
@@ -164,28 +168,43 @@ plot(unlist(d[5]), unlist(d[4]), xlab = "nstates", ylab = "Test-LogLik")
 # rebuild the model based on the best training model
 # will train it on both test and training data
 chosen_states = 7
-data <- data[,c("Global_active_power", "Voltage", "Sub_metering_3")]
+train_data <- cbind(df["Date"], df["Time"], scale(df[, c(3:9)]))
+train_data <- format_time(scaled_data)
+train_dates <- unique(data$Date)[1:38]
+train_data <- subset(data, Date %in% train_dates)
 
-finalModel <- depmix(response=list(data$Global_active_power ~ 1, data$Voltage ~ 1, data$Sub_metering_3 ~ 1), 
-                 data = data, nstates = chosen_states, 
-                 ntimes = rep(c(720), each=48),
+count_vector_train <- train_data %>% 
+  group_by(Date) %>% 
+  summarize(count = n()) %>%
+  pull(count)
+
+finalModel <- depmix(response=list(train_data$Global_active_power ~ 1, train_data$Voltage ~ 1, train_data$Sub_metering_3 ~ 1), 
+                 data = train_data, nstates = chosen_states, 
+                 ntimes = count_vector_train,
                  family=list(gaussian(), gaussian(), gaussian())
 )
 fm <- fit(finalModel)
 logLik(fm)
 
-setwd("C:/Users/ricks/Desktop/CMPT 318/FinalProject/Data/Data_with_Anomalies")
+setwd("C:/Documents/School/6 Spring 2023/CMPT 318/Final Project/Data_with_Anomalies")
 dataset1 <- read.table("Dataset_with_Anomalies_1.txt", header = TRUE, sep = ",")
 dataset2 <- read.table("Dataset_with_Anomalies_2.txt", header = TRUE, sep = ",")
 dataset3 <- read.table("Dataset_with_Anomalies_3.txt", header = TRUE, sep = ",")
-
+dataset1 <- na.omit(dataset1)
+dataset2 <- na.omit(dataset2)
+dataset3 <- na.omit(dataset3)
+dataset1 <- cbind(dataset1["Date"], dataset1["Time"], scale(dataset1[, c("Global_active_power", "Voltage", "Sub_metering_3")]))
+dataset2 <- cbind(dataset2["Date"], dataset2["Time"], scale(dataset2[, c("Global_active_power", "Voltage", "Sub_metering_3")]))
+dataset3 <- cbind(dataset3["Date"], dataset3["Time"], scale(dataset3[, c("Global_active_power", "Voltage", "Sub_metering_3")]))
+dataset1 <- format_time(dataset1)
+dataset2 <- format_time(dataset2)
+dataset3 <- format_time(dataset3)
 
 ## Dataset 1
 count_vector <- dataset1 %>% 
   group_by(Date) %>% 
   summarize(count = n()) %>%
   pull(count)
-
 
 modTest <- depmix(response=list(dataset1$Global_active_power ~ 1, dataset1$Voltage ~ 1, dataset1$Sub_metering_3 ~ 1), 
                   data = dataset1, nstates = chosen_states, 
