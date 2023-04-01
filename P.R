@@ -82,10 +82,21 @@ data <- subset(data, !(Date == "2020-12-10"))
 
 
 # Split into train and test data
-train_dates <- unique(data$Date)[1:24]
-test_dates <- unique(data$Date)[25:48]
+train_dates <- unique(data$Date)[1:38]
+test_dates <- unique(data$Date)[39:48]
 train_data <- subset(data, Date %in% train_dates)
 test_data <- subset(data, Date %in% test_dates)
+
+count_vector_train <- train_data %>% 
+  group_by(Date) %>% 
+  summarize(count = n()) %>%
+  pull(count)
+count_vector_test <- test_data %>% 
+  group_by(Date) %>% 
+  summarize(count = n()) %>%
+  pull(count)
+
+
 train_data <- train_data[,c("Global_active_power", "Voltage", "Sub_metering_3")]
 test_data <- test_data[,c("Global_active_power", "Voltage", "Sub_metering_3")]
 test_data <- test_data[is.finite(rowSums(test_data)),]
@@ -102,30 +113,33 @@ for (i in 4:23) {
   
   modFit <- depmix(response=list(train_data$Global_active_power ~ 1, train_data$Voltage ~ 1, train_data$Sub_metering_3 ~ 1), 
                 data = train_data, nstates = i, 
-                ntimes = rep(c(720), each=24),
+                ntimes = count_vector_train,
                 family=list(gaussian(), gaussian(), gaussian())
          )
   
-  # ln:110 and ln:111 do the same thing they just vary on when they want to work (uncomment only 1)
-  #fm <- fit(modFit, em=em.control((maxit = 90000000)))
   fm <- fit(modFit)
-  
+
   
   modTest <- depmix(response=list(test_data$Global_active_power ~ 1, test_data$Voltage ~ 1, test_data$Sub_metering_3 ~ 1), 
                     data = test_data, nstates = i, 
-                    ntimes = rep(c(720), each=24),
+                    ntimes = count_vector_test,
                     family=list(gaussian(), gaussian(), gaussian())
              )
   modTest <- setpars(modTest, getpars(fm))
   fb <- forwardbackward(modTest)
   fb$logLike
-  logLik(modTest)
   
-  res_list[i-2, 1] = logLik(fm)
+  # Loglik normailization
+  modelLogLike <- logLik(fm)
+  testLogLik <- fb$logLike
+  norm_modelLogLike <- modelLogLike/nrow(train_data)
+  norm_testLogLik <- testLogLik/nrow(test_data)
+  
+  res_list[i-2, 1] = norm_modelLogLike
   res_list[i-2, 2] = AIC(fm)
   res_list[i-2, 3] = BIC(fm)
-  res_list[i-2, 4] = logLik(modTest)
-  print(paste("logLik ", logLik(fm), " AIC ", AIC(fm), " BIC ", BIC(fm), " Test logLik ", fb$logLike))
+  res_list[i-2, 4] = norm_testLogLik
+  print(paste("logLik ", norm_modelLogLike, " AIC ", AIC(fm), " BIC ", BIC(fm), " Test logLik ", norm_testLogLik))
 }
 
 
@@ -149,14 +163,16 @@ plot(unlist(d[5]), unlist(d[4]), xlab = "nstates", ylab = "Test-LogLik")
 ################    Anomaly Detection   ############
 # rebuild the model based on the best training model
 # will train it on both test and training data
+chosen_states = 7
 data <- data[,c("Global_active_power", "Voltage", "Sub_metering_3")]
 
 finalModel <- depmix(response=list(data$Global_active_power ~ 1, data$Voltage ~ 1, data$Sub_metering_3 ~ 1), 
-                 data = data, nstates = 7, 
+                 data = data, nstates = chosen_states, 
                  ntimes = rep(c(720), each=48),
                  family=list(gaussian(), gaussian(), gaussian())
 )
 fm <- fit(finalModel)
+logLik(fm)
 
 setwd("C:/Users/ricks/Desktop/CMPT 318/FinalProject/Data/Data_with_Anomalies")
 dataset1 <- read.table("Dataset_with_Anomalies_1.txt", header = TRUE, sep = ",")
@@ -172,13 +188,19 @@ count_vector <- dataset1 %>%
 
 
 modTest <- depmix(response=list(dataset1$Global_active_power ~ 1, dataset1$Voltage ~ 1, dataset1$Sub_metering_3 ~ 1), 
-                  data = dataset1, nstates = 1, 
+                  data = dataset1, nstates = chosen_states, 
                   ntimes = count_vector,
-                  family=list(gaussian(), gaussian(), gaussian())
+                  family=list(gaussian(), gaussian(),  gaussian())
 )
 modTest <- setpars(modTest, getpars(fm))
-logLik(modTest)
+fb <- forwardbackward(modTest)
 
+# Loglik normailization
+modelLogLike <- logLik(fm)
+testLogLik <- fb$logLike
+norm_modelLogLike <- modelLogLike/nrow(data)
+norm_testLogLik <- testLogLik/nrow(dataset1)
+print(paste("logLik of model: ", norm_modelLogLike, "logLik on dataset1:", norm_testLogLik))
 
 
 ## DataSet 2
@@ -189,12 +211,20 @@ count_vector <- dataset2 %>%
 
 
 modTest <- depmix(response=list(dataset2$Global_active_power ~ 1, dataset2$Voltage ~ 1, dataset2$Sub_metering_3 ~ 1), 
-                  data = dataset2, nstates = i, 
+                  data = dataset2, nstates = chosen_states, 
                   ntimes = count_vector,
                   family=list(gaussian(), gaussian(), gaussian())
 )
 modTest <- setpars(modTest, getpars(fm))
-logLik(modTest)
+fb <- forwardbackward(modTest)
+
+# Loglik normailization
+modelLogLike <- logLik(fm)
+testLogLik <- fb$logLike
+norm_modelLogLike <- modelLogLike/nrow(data)
+norm_testLogLik <- testLogLik/nrow(dataset2)
+print(paste("logLik of model: ", norm_modelLogLike, "logLik on dataset2:", norm_testLogLik))
+
 
 
 ## DataSet 3
@@ -205,11 +235,16 @@ count_vector <- dataset3 %>%
 
 
 modTest <- depmix(response=list(dataset3$Global_active_power ~ 1, dataset3$Voltage ~ 1, dataset3$Sub_metering_3 ~ 1), 
-                  data = dataset3, nstates = i, 
+                  data = dataset3, nstates = chosen_states, 
                   ntimes = count_vector,
                   family=list(gaussian(), gaussian(), gaussian())
 )
 modTest <- setpars(modTest, getpars(fm))
-logLik(modTest)
+fb <- forwardbackward(modTest)
 
-
+# Loglik normailization
+modelLogLike <- logLik(fm)
+testLogLik <- fb$logLike
+norm_modelLogLike <- modelLogLike/nrow(data)
+norm_testLogLik <- testLogLik/nrow(dataset3)
+print(paste("logLik of model: ", norm_modelLogLike, "logLik on dataset3:", norm_testLogLik))
