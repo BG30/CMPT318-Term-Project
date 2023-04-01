@@ -33,12 +33,17 @@ format_time <- function(data) {
 ### Import data ###
 setwd("C:/Documents/School/6 Spring 2023/CMPT 318/Final Project")
 df <- read.table("Term_Project_Dataset.txt", header = TRUE, sep = ",")
-### df <- na.omit(df)
+df <- na.omit(df)
+
+### Plot day data ###
+
+# day_data <- filter(df, grepl("16/12/2006", Date))
+# ggplot(day_data, aes(x = Time, y = Global_active_power) ) +
+#   geom_point()
 
 ### Scale data ###
 scaled_data <- cbind(df["Date"], df["Time"], scale(df[, c(3:9)]))
 
-pcs <- prcomp(scaled_data[, c(3:9)])
 ### Filter weekday and timeframe ###
 scaled_data <- format_time(scaled_data)
 
@@ -66,9 +71,16 @@ weekly_samples <- list(weekly_samples_Global_active_power,
 
 # Samples of the average output per feature by week
 weekly_samples <- Reduce(function(x, y) merge(x, y, by = "week_num", all.x = TRUE), weekly_samples)
+
+head(weekly_samples)
+
+# ggplot(weekly_samples, aes(x = week_num, y = Global_active_power) ) +
+#   geom_point()
+
 weekly_samples = weekly_samples[,-1]
 
 print(weekly_samples)
+
 
 # PCA Analysis
 pcs <- prcomp(weekly_samples)
